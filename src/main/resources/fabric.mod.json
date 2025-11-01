@@ -1,0 +1,28 @@
+{
+	"schemaVersion": 1,
+	"id":"jrsync",
+	"version":"@jrsyncVersion@",
+	
+	"name":"JRSync",
+	"description": "RSync evaluator for Java",
+	"authors": [
+		"Gamebuster19901"
+	],
+	
+	"contact": {
+		"sources": "https://github.com/WilderForge/jrsync",
+		"issues": "https://github.com/WilderForge/jrsync/issues",
+		"homepage": "https://wildermods.com"
+	},
+	"custom": {
+		"providerMod": true,
+		"credits":[
+			"",
+			"",
+			"[title]Programming[]",
+			"Gamebuster [discord]@Gamebuster",
+			"",
+			""
+		]
+	}
+}

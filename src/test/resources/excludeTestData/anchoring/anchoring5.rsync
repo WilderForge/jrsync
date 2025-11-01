@@ -1,0 +1,4 @@
+# anchoring 4
+# recursive match for Main.joro
+
+**/*.joro

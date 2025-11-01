@@ -1,0 +1,34 @@
+plugins {
+	id 'java'
+    id 'java-library'
+    id 'maven-publish'
+    id 'eclipse'
+    id 'idea'
+}
+
+version = jrsyncVersion
+group = "com.wildermods"
+base.archivesName = "jrsync"
+
+apply from: 'replaceTokenScript.gradle'
+apply from: 'publishScript.gradle'
+
+repositories {
+    mavenLocal()
+    mavenCentral()
+}
+
+dependencies {
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.9.3'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(8)
+    }
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

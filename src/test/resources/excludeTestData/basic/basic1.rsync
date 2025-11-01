@@ -1,0 +1,3 @@
+# Basic Wildcards 1
+# exclude all .txt files
+*.txt

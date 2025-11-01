@@ -1,0 +1,4 @@
+# Basic Wildcards 2
+# Single character wildcard (?)
+
+file?.log

@@ -1,0 +1,3 @@
+# posix 2
+# uppercase only filenames
+[A-Z]*

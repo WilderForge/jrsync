@@ -1,0 +1,4 @@
+# posix 1
+# files starting with digits
+
+[[:digit:]]*
