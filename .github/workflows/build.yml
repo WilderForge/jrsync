@@ -3,6 +3,7 @@ name: Build and Test
 permissions:
   contents: read
   statuses: write
+  checks: write
 
 on: 
   pull_request: 
