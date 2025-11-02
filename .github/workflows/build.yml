@@ -11,7 +11,7 @@ on:
 
 jobs:
   build-linux:
-    name: Build and test
+    name: Build and test (Linux)
     runs-on: ubuntu-latest
     if: |
       github.event_name == 'push' ||
@@ -49,10 +49,19 @@ jobs:
         with:
           java-version: '21'
           distribution: 'adopt'
+      - name: Ensure GITHUB_ACTIONS env for tests
+          run: echo "GITHUB_ACTIONS=true" >> $GITHUB_ENV
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Build With Gradle
         run: ./gradlew build
+      - name: Save Linux Test Results
+        id: upload_results
+        run: |
+          mkdir -p $GITHUB_WORKSPACE/linux-results
+          cp -r /tmp/jrsync/rsyncCopy $GITHUB_WORKSPACE/linux-results/
+          cp -r /tmp/jrsync/javaCopy $GITHUB_WORKSPACE/linux-results/
+          echo "results_path=$GITHUB_WORKSPACE/linux-results" >> $GITHUB_OUTPUT
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@v5
         if: always()
@@ -81,3 +90,30 @@ jobs:
               \"target_url\": \"$TARGET_URL\"
             }" \
             "https://api.github.com/repos/${{ github.repository }}/statuses/${{ env.COMMIT_SHA }}"
+      build-windows:
+        name: Build and test (Windows)
+        runs-on: windows-latest
+        needs: build-linux
+        steps:
+          - name: Checkout repository
+            uses: actions/checkout@v3
+          - name: Set up JDK 21
+            uses: actions/setup-java@v4.5.0
+            with:
+              java-version: '21'
+              distribution: 'adopt'
+          - name: Ensure GITHUB_ACTIONS env for tests
+            run: setx GITHUB_ACTIONS true
+          - name: Copy Linux results
+            run: |
+              mkdir C:\jrsync\linux-results
+              robocopy "${{ needs.build-linux.outputs.linux-results-path }}\rsyncCopy" "C:\jrsync\linux-results\rsyncCopy" /E
+              robocopy "${{ needs.build-linux.outputs.linux-results-path }}\javaCopy" "C:\jrsync\linux-results\javaCopy" /E
+          - name: Build & Run Tests (Windows)
+            run: ./gradlew clean test
+          - name: Publish Test Report
+            uses: mikepenz/action-junit-report@v5
+            if: always()
+            with:
+              report_paths: '**/build/test-results/test/TEST-*.xml'
+    
