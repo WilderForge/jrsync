@@ -1,6 +1,13 @@
 name: Build and Test
 
-on: [ pull_request, push, workflow_dispatch ]
+on: 
+  pull_request: 
+  push:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: 'The commit SHA to checkout and build'
+        required: true
 
 jobs:
   build-linux:
@@ -11,6 +18,30 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
     steps:
+      - name: Determine Commit SHA
+        id: determine_sha
+        run: |
+          if [ -z "${{ github.event.inputs.sha }}" ]; then
+            echo "COMMIT_SHA=${{ github.sha }}" >> $GITHUB_ENV
+          else
+            echo "COMMIT_SHA=${{ github.event.inputs.sha }}" >> $GITHUB_ENV
+          fi
+      - name: Set Commit Status to Pending
+        run: |
+          STATUS="pending"
+          DESCRIPTION="Build in progress for commit ${{ env.COMMIT_SHA }}"
+          TARGET_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"state\": \"$STATUS\",
+              \"description\": \"$DESCRIPTION\",
+              \"context\": \"Build Status\",
+              \"target_url\": \"$TARGET_URL\"
+            }" \
+            "https://api.github.com/repos/${{ github.repository }}/statuses/${{ env.COMMIT_SHA }}"
       - name: Checkout repository
         uses: actions/checkout@v3
       - name: Set up JDK 21
@@ -27,3 +58,26 @@ jobs:
         if: always()
         with:
           report_paths: '**/build/test-results/test/TEST-*.xml'
+      - name: Post Build Status
+        if: always()
+        run: |
+          STATUS="success"
+          DESCRIPTION="Build successful"
+
+          if [ ${{ job.status }} != "success" ]; then
+            STATUS="failure"
+            DESCRIPTION="Build failed"
+          fi
+
+          TARGET_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"state\": \"$STATUS\",
+              \"description\": \"$DESCRIPTION\",
+              \"context\": \"Build Status\",
+              \"target_url\": \"$TARGET_URL\"
+            }" \
+            "https://api.github.com/repos/${{ github.repository }}/statuses/${{ env.COMMIT_SHA }}"
