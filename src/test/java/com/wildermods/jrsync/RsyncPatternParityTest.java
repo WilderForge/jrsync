@@ -109,7 +109,7 @@ public class RsyncPatternParityTest {
 					Path resultFile = LINUX_TO_WINDOWS_RESULTS_MOUNT.resolve(name + ".txt");
 					String expectedString;
 					try (BufferedReader reader = Files.newBufferedReader(resultFile)) {
-						expectedString = reader.readLine();
+						expectedString = reader.readLine().replace('\\', '/');
 					}
 					return expectedString;
 				},
@@ -140,7 +140,7 @@ public class RsyncPatternParityTest {
 			List<String> resultingFiles = listAllRelativeFiles(results);
 			Collections.sort(resultingFiles);
 
-			Assertions.assertEquals(expectedString, resultingFiles.toString(),
+			Assertions.assertEquals(expectedString, resultingFiles.toString().replace('\\', '/'),
 					"Directory mismatch " + identifier + " for pattern: " + pattern + " regex: " + pattern.regexPattern + " ");
 		} finally {
 			finalizer.accept(null, results); // expected path no longer needed
