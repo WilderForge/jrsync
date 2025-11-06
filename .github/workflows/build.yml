@@ -53,7 +53,7 @@ jobs:
         uses: actions/setup-java@v4.5.0
         with:
           java-version: '21'
-          distribution: 'temurin'
+          distribution: 'adopt'
       - name: Ensure GITHUB_ACTIONS env for tests
         run: echo "GITHUB_ACTIONS=true" >> $GITHUB_ENV
       - name: Setup Gradle
@@ -111,7 +111,7 @@ jobs:
         uses: actions/setup-java@v4.5.0
         with:
           java-version: '21'
-          distribution: 'temurin'
+          distribution: 'adopt'
       - name: Ensure GITHUB_ACTIONS env for tests
         run: setx GITHUB_ACTIONS true
       - name: Download Linux Results
