@@ -96,7 +96,7 @@ public class RsyncPatternParityTest {
     			runParityTest(
     				"comparing windows against linux - " + name,
     				() -> (RegexBackedPattern) RSyncPattern.compile(pattern),
-    				() -> LINUX_TO_WINDOWS_RESULTS_MOUNT.resolve(name),
+    				() -> LINUX_TO_WINDOWS_RESULTS_MOUNT.resolve("rsyncCopy").resolve(name),
     				() -> Files.createTempDirectory("javaCopy"),
     				cleanup
     			);
