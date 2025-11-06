@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Assertions;
 import java.io.*;
 import java.nio.file.*;
 import java.util.*;
+import java.util.Map.Entry;
 import java.util.concurrent.Callable;
 import java.util.function.BiConsumer;
 import java.util.stream.*;
@@ -33,8 +34,8 @@ public class RsyncPatternParityTest {
     private static final BiConsumer<Path, Path> CLEANUP = (expected, results) -> {deleteRecursively(expected); deleteRecursively(results);};
     private static final BiConsumer<Path, Path> NO_CLEANUP = (expected, results) -> {};
     
-    static Stream<String> providePatterns() throws IOException {
-        List<String> patterns = new ArrayList<>();
+    static Stream<Entry<String, String>> providePatterns() throws IOException {
+        Map<String, String> patterns = new LinkedHashMap<>();
 
         Files.walk(EXCLUDE_DATA_ROOT)
                 .filter(Files::isRegularFile)
@@ -44,19 +45,23 @@ public class RsyncPatternParityTest {
                         while ((line = reader.readLine()) != null) {
                             line = line.trim();
                             if (line.isEmpty() || line.startsWith("#") || line.startsWith(";")) continue;
-                            patterns.add(line);
+                            
+                            patterns.put(path.getFileName().toString(), line);
                         }
                     } catch (IOException e) {
                         throw new RuntimeException("Failed to read pattern file: " + path, e);
                     }
                 });
 
-        return patterns.stream();
+        return patterns.entrySet().stream();
     }
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("providePatterns")
-    void testPatternParity(String pattern) throws Exception {
+    void testPatternParity(Entry<String, String> entry) throws Exception {
+    	
+    	final String name = entry.getKey();
+    	final String pattern = entry.getValue();
     	
     	final BiConsumer<Path, Path> cleanup = IS_GITHUB_ACTIONS ? NO_CLEANUP : CLEANUP;
     	
@@ -69,7 +74,7 @@ public class RsyncPatternParityTest {
     		}
     		else {
     			rsyncDir = LINUX_RSYNC_DIR;
-    			javaDir = LINUX_JAVA_DIR;
+    			javaDir = LINUX_JAVA_DIR.resolve(name);
     		}
     		prepareStaticDirs(rsyncDir, javaDir);
     		runParityTest(
@@ -91,7 +96,7 @@ public class RsyncPatternParityTest {
     			runParityTest(
     				"comparing windows against linux",
     				() -> (RegexBackedPattern) RSyncPattern.compile(pattern),
-    				() -> LINUX_TO_WINDOWS_RESULTS_MOUNT,
+    				() -> LINUX_TO_WINDOWS_RESULTS_MOUNT.resolve(name),
     				() -> Files.createTempDirectory("javaCopy"),
     				cleanup
     			);
