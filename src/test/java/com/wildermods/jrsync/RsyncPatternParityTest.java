@@ -73,12 +73,12 @@ public class RsyncPatternParityTest {
     	        javaDir = Files.createTempDirectory("javaCopy");
     		}
     		else {
-    			rsyncDir = LINUX_RSYNC_DIR;
+    			rsyncDir = LINUX_RSYNC_DIR.resolve(name);
     			javaDir = LINUX_JAVA_DIR.resolve(name);
     		}
     		prepareStaticDirs(rsyncDir, javaDir);
     		runParityTest(
-    			"comparing linux against rsync", 
+    			"comparing linux against rsync - " + name, 
     			() -> (RegexBackedPattern) RSyncPattern.compile(pattern), 
     			() -> {
     				runRsyncCopy(pattern, rsyncDir);
@@ -94,7 +94,7 @@ public class RsyncPatternParityTest {
     		}
     		else if (OS == WINDOWS) {
     			runParityTest(
-    				"comparing windows against linux",
+    				"comparing windows against linux - " + name,
     				() -> (RegexBackedPattern) RSyncPattern.compile(pattern),
     				() -> LINUX_TO_WINDOWS_RESULTS_MOUNT.resolve(name),
     				() -> Files.createTempDirectory("javaCopy"),
