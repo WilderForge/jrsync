@@ -35,6 +35,33 @@ public class RsyncPatternParityTest {
 	private static final BiConsumer<Path, Path> CLEANUP = (expected, results) -> {deleteRecursively(expected); deleteRecursively(results);};
 	private static final BiConsumer<Path, Path> NO_CLEANUP = (expected, results) -> {};
 	
+	private static String NO_MATCHES_OUTPUT;
+
+	static {
+		if (OS == LINUX) {
+			try {
+				Path path = EXCLUDE_DATA_ROOT.resolve("special/no_matches.rsync");
+				String pattern = Files.readAllLines(path).get(0).trim();
+
+				Path tempDir = Files.createTempDirectory("noMatches");
+				try {
+					new RsyncPatternParityTest().runRsyncCopy(pattern, tempDir);
+					List<String> files = Files.walk(tempDir)
+							.filter(Files::isRegularFile)
+							.map(tempDir::relativize)
+							.map(Path::toString)
+							.sorted()
+							.collect(Collectors.toList());
+					NO_MATCHES_OUTPUT = files.toString();
+				} finally {
+					deleteRecursively(tempDir);
+				}
+			} catch (IOException | InterruptedException e) {
+				throw new RuntimeException("Failed to compute no_matches output", e);
+			}
+		}
+	}
+	
 	static Stream<Entry<String, String>> providePatterns() throws IOException {
 		Map<String, String> patterns = new LinkedHashMap<>();
 
@@ -142,8 +169,14 @@ public class RsyncPatternParityTest {
 
 			Assertions.assertEquals(expectedString, resultingFiles.toString().replace('\\', '/'),
 					"Directory mismatch " + identifier + " for pattern: " + pattern + " regex: " + pattern.regexPattern + " ");
+			
+			if (OS == LINUX) {
+				if(!identifier.contains("no_matches")) {
+					Assertions.assertNotEquals(NO_MATCHES_OUTPUT, resultingFiles.toString(), "Pattern did not match any files! Test is ineffective: " + identifier);
+				}
+			}
 		} finally {
-			finalizer.accept(null, results); // expected path no longer needed
+			finalizer.accept(null, results);
 		}
 	}
 
