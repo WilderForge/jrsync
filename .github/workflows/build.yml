@@ -67,6 +67,11 @@ jobs:
           cp -r /tmp/jrsync/rsyncCopy $GITHUB_WORKSPACE/linux-results/
           cp -r /tmp/jrsync/javaCopy $GITHUB_WORKSPACE/linux-results/
           echo "results_path=$GITHUB_WORKSPACE/linux-results" >> $GITHUB_OUTPUT
+      - name: Upload Linux Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-results
+          path: ${{ github.workspace }}/linux-results
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@v5
         if: always()
@@ -109,11 +114,11 @@ jobs:
           distribution: 'adopt'
       - name: Ensure GITHUB_ACTIONS env for tests
         run: setx GITHUB_ACTIONS true
-      - name: Copy Linux results
-        run: |
-          mkdir C:\jrsync\linux-results
-          robocopy "${{ needs.build-linux.outputs.linux-results-path }}\rsyncCopy" "C:\jrsync\linux-results\rsyncCopy" /E
-          robocopy "${{ needs.build-linux.outputs.linux-results-path }}\javaCopy" "C:\jrsync\linux-results\javaCopy" /E
+      - name: Download Linux Results
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-results
+          path: C:\jrsync\linux-results
       - name: Build & Run Tests (Windows)
         run: ./gradlew clean test
       - name: Publish Test Report
