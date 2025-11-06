@@ -64,15 +64,15 @@ jobs:
         id: upload_results
         run: |
           mkdir -p $GITHUB_WORKSPACE/linux-results
-          cp -r /tmp/jrsync/rsyncCopy $GITHUB_WORKSPACE/linux-results/
-          cp -r /tmp/jrsync/javaCopy $GITHUB_WORKSPACE/linux-results/
+          # Copy only the .txt files that the tests generated
+          cp /tmp/jrsync/linux-results/*.txt $GITHUB_WORKSPACE/linux-results/
           echo "results_path=$GITHUB_WORKSPACE/linux-results" >> $GITHUB_OUTPUT
+      
       - name: Upload Linux Results
         uses: actions/upload-artifact@v4
         with:
           name: linux-results
-          path: ${{ github.workspace }}/linux-results
-          include-hidden-files: true
+          path: ${{ github.workspace }}/linux-results/*.txt
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@v5
         if: always()
