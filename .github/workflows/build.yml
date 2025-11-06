@@ -72,6 +72,7 @@ jobs:
         with:
           name: linux-results
           path: ${{ github.workspace }}/linux-results
+          include-hidden-files: true
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@v5
         if: always()
