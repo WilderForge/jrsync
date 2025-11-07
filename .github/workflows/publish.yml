@@ -6,7 +6,7 @@ on:
       branch:
         description: 'Branch to check out '
         required: true
-        default: ${{ github.event.repository.default_branch }}
+        default: 'master'
       sha:
         description: 'The commit SHA to checkout and publish'
         required: true
