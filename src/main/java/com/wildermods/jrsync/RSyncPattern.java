@@ -33,8 +33,8 @@ import com.wildermods.jrsync.internal.StringHelper;
  *
  * <h2>Examples</h2>
  * <pre>{@code
- * Pattern p = Pattern.compile("*.java");
- * boolean matches = p.matches(Path.of("/home/user/Main.java")); // true
+ * Pattern p = RSyncPattern.compile("*.java");
+ * boolean matches = p.matches(Path.of("/home/user/Main.java").toAbsolutePath()); // true
  * }</pre>
  *
  * <p>
