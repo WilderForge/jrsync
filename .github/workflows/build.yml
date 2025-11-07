@@ -18,6 +18,8 @@ jobs:
   build-linux:
     name: Build and test (Linux)
     runs-on: ubuntu-latest
+    outputs:
+      commit_sha: ${{ steps.determine_sha.outputs.commit_sha }}
     if: |
       github.event_name == 'push' ||
       github.event_name == 'workflow_dispatch' ||
@@ -79,29 +81,6 @@ jobs:
         with:
           report_paths: '**/build/test-results/test/TEST-*.xml'
           check_name: "JUnit Test Report (Linux)"
-      - name: Post Build Status
-        if: always()
-        run: |
-          STATUS="success"
-          DESCRIPTION="Build successful"
-
-          if [ ${{ job.status }} != "success" ]; then
-            STATUS="failure"
-            DESCRIPTION="Build failed"
-          fi
-
-          TARGET_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-
-          curl -s -X POST \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"state\": \"$STATUS\",
-              \"description\": \"$DESCRIPTION\",
-              \"context\": \"Build Status\",
-              \"target_url\": \"$TARGET_URL\"
-            }" \
-            "https://api.github.com/repos/${{ github.repository }}/statuses/${{ env.COMMIT_SHA }}"
   build-windows:
     name: Build and test (Windows)
     runs-on: windows-latest
@@ -161,3 +140,35 @@ jobs:
         with:
           report_paths: '**/build/test-results/test/TEST-*.xml'
           check_name: "JUnit Test Report (Mac)"
+  post-status:
+    name: Post Build Status
+    runs-on: ubuntu-latest
+    needs: [build-linux, build-windows, build-macos]
+    if: always()
+    steps:
+      - name: Set Final Commit Status
+        run: |
+          COMMIT_SHA="${{ needs.build-linux.outputs.commit_sha }}"
+          TARGET_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          if [[ "${{ needs.build-linux.result }}" == "success" && \
+                "${{ needs.build-windows.result }}" == "success" && \
+                "${{ needs.build-macos.result }}" == "success" ]]; then
+            STATE="success"
+            DESC="All builds successful"
+          else
+            STATE="failure"
+            DESC="One or more builds failed"
+          fi
+
+          curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"state\": \"$STATE\",
+              \"description\": \"$DESC\",
+              \"context\": \"Build Status\",
+              \"target_url\": \"$TARGET_URL\"
+            }" \
+            "https://api.github.com/repos/${{ github.repository }}/statuses/${COMMIT_SHA}"
+
