@@ -135,7 +135,11 @@ public abstract class RSyncPattern implements FileFilter {
 			
 			Path absolutePath = root.resolve(path); //resolve relative paths against root
 			Path relative = root.relativize(absolutePath);
-			Matcher matcher = regexPattern.matcher(relative.toString().replace('\\', '/'));
+			String relativeString = relative.toString();
+			if(OS.getOS() == OS.WINDOWS) {
+				relativeString = relativeString.replace('\\', '/');
+			}
+			Matcher matcher = regexPattern.matcher(relativeString);
 			
 			if(!matcher.matches()) {
 				return false;

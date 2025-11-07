@@ -1,4 +1,4 @@
 # escape 3
 # literal backslash
 
-foo\\bar
+**/foo\\bar

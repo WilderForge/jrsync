@@ -1,4 +1,4 @@
 # escape 4
 # literal question mark
 
-data\?.bin
+data\+.bin

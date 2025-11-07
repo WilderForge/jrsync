@@ -136,7 +136,7 @@ public class RsyncPatternParityTest {
 					Path resultFile = LINUX_TO_WINDOWS_RESULTS_MOUNT.resolve(name + ".txt");
 					String expectedString;
 					try (BufferedReader reader = Files.newBufferedReader(resultFile)) {
-						expectedString = reader.readLine().replace('\\', '/');
+						expectedString = reader.readLine();
 					}
 					return expectedString;
 				},
@@ -167,12 +167,17 @@ public class RsyncPatternParityTest {
 			List<String> resultingFiles = listAllRelativeFiles(results);
 			Collections.sort(resultingFiles);
 
-			Assertions.assertEquals(expectedString, resultingFiles.toString().replace('\\', '/'),
+			String resultingFilesString = resultingFiles.toString();
+			if(OS.getOS() == WINDOWS) {
+				resultingFilesString = resultingFilesString.replace('\\', '/');
+			}
+			
+			Assertions.assertEquals(expectedString, resultingFilesString,
 					"Directory mismatch " + identifier + " for pattern: " + pattern + " regex: " + pattern.regexPattern + " ");
 			
 			if (OS == LINUX) {
 				if(!identifier.contains("no_matches")) {
-					Assertions.assertNotEquals(NO_MATCHES_OUTPUT, resultingFiles.toString(), "Pattern did not match any files! Test is ineffective: " + identifier);
+					Assertions.assertNotEquals(NO_MATCHES_OUTPUT, resultingFiles.toString(), "Pattern did not match any files! Test is ineffective: " + identifier + " for pattern " + pattern.pattern + " regex: " + pattern.regexPattern + " ");
 				}
 			}
 		} finally {
@@ -221,6 +226,7 @@ public class RsyncPatternParityTest {
 						if (Files.isDirectory(sourcePath)) {
 							Files.createDirectories(targetPath);
 						} else if (!pattern.matches(TEST_ROOT, sourcePath)) { // Exclude pattern
+							System.out.println("Does not match: " + sourcePath);
 							Files.createDirectories(targetPath.getParent());
 							Files.copy(sourcePath, targetPath, StandardCopyOption.REPLACE_EXISTING);
 						}

@@ -1,4 +1,4 @@
 # escape 1
 # literal star filename
 
-\*.txt
+\[.txt
