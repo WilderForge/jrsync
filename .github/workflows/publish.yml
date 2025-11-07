@@ -3,10 +3,6 @@ name: Publish Specific Commit
 on:
   workflow_dispatch:
     inputs:
-      branch:
-        description: 'Branch to check out '
-        required: true
-        default: 'master'
       sha:
         description: 'The commit SHA to checkout and publish'
         required: true
@@ -19,18 +15,18 @@ jobs:
       COMMIT_SHA: ${{ github.event.inputs.sha }}
 
     steps:
-      - name: Checkout the repository
+      - name: Determine Commit SHA
+        id: determine_sha
+        run: |
+          if [ -z "${{ github.event.inputs.sha }}" ]; then
+            echo "commit_sha=${GITHUB_SHA}" >> $GITHUB_OUTPUT
+          else
+            echo "commit_sha=${{ github.event.inputs.sha }}" >> $GITHUB_OUTPUT
+            
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ env.COMMIT_SHA }}
-          fetch-depth: 0
-          repository: ${{ github.repository }}
-
-      - name: Ensure correct branch
-        run: |
-          git fetch origin ${{ env.TARGET_BRANCH }}
-          git checkout ${{ env.TARGET_BRANCH }}
-          git reset --hard ${{ env.COMMIT_SHA }}
+          ref: ${{ steps.determine_sha.outputs.commit_sha }}
 
       - name: Set up JDK 8
         uses: actions/setup-java@v4
