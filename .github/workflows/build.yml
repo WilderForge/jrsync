@@ -29,9 +29,9 @@ jobs:
         id: determine_sha
         run: |
           if [ -z "${{ github.event.inputs.sha }}" ]; then
-            echo "COMMIT_SHA=${{ github.sha }}" >> $GITHUB_ENV
+            echo "commit_sha=${{ github.sha }}" >> $GITHUB_OUTPUT
           else
-            echo "COMMIT_SHA=${{ github.event.inputs.sha }}" >> $GITHUB_ENV
+            echo "commit_sha=${{ github.event.inputs.sha }}" >> $GITHUB_OUTPUT
           fi
       - name: Set Commit Status to Pending
         run: |
