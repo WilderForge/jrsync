@@ -127,4 +127,35 @@ jobs:
         if: always()
         with:
           report_paths: '**/build/test-results/test/TEST-*.xml'
-    
+  build-macos:
+    name: Build and test (macOS)
+    runs-on: macos-latest
+    needs: build-linux
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4.5.0
+        with:
+          java-version: '21'
+          distribution: 'adopt'
+
+      - name: Ensure GITHUB_ACTIONS env for tests
+        run: echo "GITHUB_ACTIONS=true" >> $GITHUB_ENV
+
+      - name: Download Linux Results
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-results
+          path: /tmp/jrsync/linux-results
+
+      - name: Build & Run Tests (macOS)
+        run: ./gradlew clean test
+
+      - name: Publish Test Report
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          report_paths: '**/build/test-results/test/TEST-*.xml'
+
