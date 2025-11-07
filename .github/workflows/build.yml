@@ -1,12 +1,90 @@
-name: pr-check
+name: Build and Test
 
-on: [ pull_request, push, workflow_dispatch ]
+permissions:
+  contents: read
+  statuses: write
+  checks: write
+
+on: 
+  pull_request: 
+  push:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: 'The commit SHA to checkout and build'
+        required: true
 
 jobs:
-  build:
-    name: Build and test
+  build-linux:
+    name: Build and test (Linux)
     runs-on: ubuntu-latest
+    outputs:
+      commit_sha: ${{ steps.determine_sha.outputs.commit_sha }}
+    if: |
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
+    steps:
+      - name: Determine Commit SHA
+        id: determine_sha
+        run: |
+          if [ -z "${{ github.event.inputs.sha }}" ]; then
+            echo "commit_sha=${{ github.sha }}" >> $GITHUB_OUTPUT
+          else
+            echo "commit_sha=${{ github.event.inputs.sha }}" >> $GITHUB_OUTPUT
+          fi
+      - name: Set Commit Status to Pending
+        run: |
+          STATUS="pending"
+          DESCRIPTION="Build in progress for commit ${{ env.COMMIT_SHA }}"
+          TARGET_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
+          curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"state\": \"$STATUS\",
+              \"description\": \"$DESCRIPTION\",
+              \"context\": \"Build Status\",
+              \"target_url\": \"$TARGET_URL\"
+            }" \
+            "https://api.github.com/repos/${{ github.repository }}/statuses/${{ env.COMMIT_SHA }}"
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4.5.0
+        with:
+          java-version: '21'
+          distribution: 'adopt'
+      - name: Ensure GITHUB_ACTIONS env for tests
+        run: echo "GITHUB_ACTIONS=true" >> $GITHUB_ENV
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Build With Gradle
+        run: ./gradlew build
+      - name: Save Linux Test Results
+        id: upload_results
+        run: |
+          mkdir -p $GITHUB_WORKSPACE/linux-results
+          # Copy only the .txt files that the tests generated
+          cp /tmp/jrsync/linux-results/*.txt $GITHUB_WORKSPACE/linux-results/
+          echo "results_path=$GITHUB_WORKSPACE/linux-results" >> $GITHUB_OUTPUT
+      
+      - name: Upload Linux Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-results
+          path: ${{ github.workspace }}/linux-results/*.txt
+      - name: Publish Test Report
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          report_paths: '**/build/test-results/test/TEST-*.xml'
+          check_name: "JUnit Test Report (Linux)"
+  build-windows:
+    name: Build and test (Windows)
+    runs-on: windows-latest
+    needs: build-linux
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -15,12 +93,82 @@ jobs:
         with:
           java-version: '21'
           distribution: 'adopt'
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-      - name: Build With Gradle
-        run: ./gradlew build
+      - name: Ensure GITHUB_ACTIONS env for tests
+        run: setx GITHUB_ACTIONS true
+      - name: Download Linux Results
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-results
+          path: C:\jrsync\linux-results
+      - name: Build & Run Tests (Windows)
+        run: ./gradlew clean test
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
           report_paths: '**/build/test-results/test/TEST-*.xml'
+          check_name: "JUnit Test Report (Windows)"
+  build-macos:
+    name: Build and test (macOS)
+    runs-on: macos-latest
+    needs: build-linux
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4.5.0
+        with:
+          java-version: '21'
+          distribution: 'adopt'
+
+      - name: Ensure GITHUB_ACTIONS env for tests
+        run: echo "GITHUB_ACTIONS=true" >> $GITHUB_ENV
+
+      - name: Download Linux Results
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-results
+          path: /tmp/jrsync/linux-results
+
+      - name: Build & Run Tests (macOS)
+        run: ./gradlew clean test
+
+      - name: Publish Test Report
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          report_paths: '**/build/test-results/test/TEST-*.xml'
+          check_name: "JUnit Test Report (Mac)"
+  post-status:
+    name: Post Build Status
+    runs-on: ubuntu-latest
+    needs: [build-linux, build-windows, build-macos]
+    if: always()
+    steps:
+      - name: Set Final Commit Status
+        run: |
+          COMMIT_SHA="${{ needs.build-linux.outputs.commit_sha }}"
+          TARGET_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          if [[ "${{ needs.build-linux.result }}" == "success" && \
+                "${{ needs.build-windows.result }}" == "success" && \
+                "${{ needs.build-macos.result }}" == "success" ]]; then
+            STATE="success"
+            DESC="All builds successful"
+          else
+            STATE="failure"
+            DESC="One or more builds failed"
+          fi
+
+          curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"state\": \"$STATE\",
+              \"description\": \"$DESC\",
+              \"context\": \"Build Status\",
+              \"target_url\": \"$TARGET_URL\"
+            }" \
+            "https://api.github.com/repos/${{ github.repository }}/statuses/${COMMIT_SHA}"
+

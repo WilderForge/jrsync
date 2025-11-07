@@ -10,127 +10,280 @@ import org.junit.jupiter.api.Assertions;
 import java.io.*;
 import java.nio.file.*;
 import java.util.*;
+import java.util.Map.Entry;
+import java.util.concurrent.Callable;
+import java.util.function.BiConsumer;
 import java.util.stream.*;
+
+import static com.wildermods.jrsync.OS.*;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 public class RsyncPatternParityTest {
 
-    private static final Path TEST_ROOT = Paths.get("src/test/resources/testData").toAbsolutePath();
-    private static final Path EXCLUDE_DATA_ROOT = Paths.get("src/test/resources/excludeTestData").toAbsolutePath();
+	private static final Path TEST_ROOT = Paths.get("src/test/resources/testData").toAbsolutePath();
+	private static final Path EXCLUDE_DATA_ROOT = Paths.get("src/test/resources/excludeTestData").toAbsolutePath();
 
-    static Stream<String> providePatterns() throws IOException {
-        List<String> patterns = new ArrayList<>();
+	private static final Path LINUX_RSYNC_DIR = Paths.get("/tmp/jrsync/rsyncCopy");
+	private static final Path LINUX_JAVA_DIR = Paths.get("/tmp/jrsync/javaCopy");
+	
+	private static final Path LINUX_RESULTS_DIR = LINUX_RSYNC_DIR.getParent().resolve("linux-results");
+	private static final Path LINUX_TO_WINDOWS_RESULTS_MOUNT = Paths.get("C:\\jrsync\\linux-results");
+	private static final Path LINUX_TO_MAC_RESULTS_MOUNT = Paths.get("/tmp/jrsync/linux-results");
+	
+	private static final boolean IS_GITHUB_ACTIONS = "true".equalsIgnoreCase(System.getenv("GITHUB_ACTIONS"));
+	private static final OS OS = com.wildermods.jrsync.OS.getOS();
+	
+	private static final BiConsumer<Path, Path> CLEANUP = (expected, results) -> {deleteRecursively(expected); deleteRecursively(results);};
+	private static final BiConsumer<Path, Path> NO_CLEANUP = (expected, results) -> {};
+	
+	private static String NO_MATCHES_OUTPUT;
 
-        Files.walk(EXCLUDE_DATA_ROOT)
-                .filter(Files::isRegularFile)
-                .forEach(path -> {
-                    try (BufferedReader reader = Files.newBufferedReader(path)) {
-                        String line;
-                        while ((line = reader.readLine()) != null) {
-                            line = line.trim();
-                            if (line.isEmpty() || line.startsWith("#") || line.startsWith(";")) continue;
-                            patterns.add(line);
-                        }
-                    } catch (IOException e) {
-                        throw new RuntimeException("Failed to read pattern file: " + path, e);
-                    }
-                });
+	static {
+		if (OS == LINUX) {
+			try {
+				Path path = EXCLUDE_DATA_ROOT.resolve("special/no_matches.rsync");
+				String pattern = Files.readAllLines(path).get(0).trim();
 
-        return patterns.stream();
-    }
+				Path tempDir = Files.createTempDirectory("noMatches");
+				try {
+					new RsyncPatternParityTest().runRsyncCopy(pattern, tempDir);
+					List<String> files = Files.walk(tempDir)
+							.filter(Files::isRegularFile)
+							.map(tempDir::relativize)
+							.map(Path::toString)
+							.sorted()
+							.collect(Collectors.toList());
+					NO_MATCHES_OUTPUT = files.toString();
+				} finally {
+					deleteRecursively(tempDir);
+				}
+			} catch (IOException | InterruptedException e) {
+				throw new RuntimeException("Failed to compute no_matches output", e);
+			}
+		}
+	}
+	
+	static Stream<Entry<String, String>> providePatterns() throws IOException {
+		Map<String, String> patterns = new LinkedHashMap<>();
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("providePatterns")
-    void testPatternParity(String pattern) throws Exception {
-        Path rsyncTempDir = Files.createTempDirectory("rsyncCopy");
-        Path javaTempDir = Files.createTempDirectory("javaCopy");
+		Files.walk(EXCLUDE_DATA_ROOT)
+				.filter(Files::isRegularFile)
+				.forEach(path -> {
+					try (BufferedReader reader = Files.newBufferedReader(path)) {
+						String line;
+						while ((line = reader.readLine()) != null) {
+							line = line.trim();
+							if (line.isEmpty() || line.startsWith("#") || line.startsWith(";")) continue;
+							
+							patterns.put(path.getFileName().toString(), line);
+						}
+					} catch (IOException e) {
+						throw new RuntimeException("Failed to read pattern file: " + path, e);
+					}
+				});
 
-        try {
-            // Copy with rsync using pattern as exclusion
-            runRsyncCopy(pattern, rsyncTempDir);
+		return patterns.entrySet().stream();
+	}
 
-            // Copy with Java using your Pattern class
-            RegexBackedPattern javapattern = (RegexBackedPattern) copyWithJava(pattern, javaTempDir);
+	@ParameterizedTest(name = "{0}")
+	@MethodSource("providePatterns")
+	void testPatternParity(Entry<String, String> entry) throws Exception {
 
-            // Compare directory structures
-            List<String> rsyncFiles = listAllRelativeFiles(rsyncTempDir);
-            List<String> javaFiles = listAllRelativeFiles(javaTempDir);
+		final String name = entry.getKey();
+		final String pattern = entry.getValue();
 
-            Collections.sort(rsyncFiles);
-            Collections.sort(javaFiles);
+		final BiConsumer<Path, Path> cleanup = IS_GITHUB_ACTIONS ? NO_CLEANUP : CLEANUP;
 
-            Assertions.assertEquals(rsyncFiles, javaFiles,
-                    "Directory mismatch for pattern: " + pattern + " regex: " + javapattern.regexPattern + " ");
-        } finally {
-            deleteRecursively(rsyncTempDir);
-            deleteRecursively(javaTempDir);
-        }
-    }
+		if (OS == LINUX) {
+			final Path rsyncDir;
+			final Path javaDir;
+			if (!IS_GITHUB_ACTIONS) {
+				rsyncDir = Files.createTempDirectory("rsyncCopy");
+				javaDir = Files.createTempDirectory("javaCopy");
+			} else {
+				rsyncDir = LINUX_RSYNC_DIR.resolve(name);
+				javaDir = LINUX_JAVA_DIR.resolve(name);
+			}
+			prepareStaticDirs(rsyncDir, javaDir);
 
-    private void runRsyncCopy(String excludePattern, Path dest) throws IOException, InterruptedException {
-        Path tempExclude = Files.createTempFile("exclude", ".txt");
-        Files.write(tempExclude, Collections.singleton(excludePattern), StandardOpenOption.TRUNCATE_EXISTING);
+			// Run rsync
+			runRsyncCopy(pattern, rsyncDir);
 
-        ProcessBuilder pb = new ProcessBuilder(
-                "rsync",
-                "-a",
-                "--exclude-from=" + tempExclude.toAbsolutePath(),
-                TEST_ROOT.toAbsolutePath() + "/",
-                dest.toAbsolutePath().toString() + "/"
-        );
-        pb.redirectErrorStream(true);
-        Process process = pb.start();
+			// Build expected string
+			List<String> allFiles = listAllRelativeFiles(rsyncDir);
+			Collections.sort(allFiles);
+			String expectedString = allFiles.toString();
 
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-            reader.lines().forEach(System.out::println); // optional: debug output
-        }
+			// Write to file for artifact upload
+			Path resultFile = LINUX_RESULTS_DIR.resolve(name + ".txt");
+			Files.createDirectories(resultFile.getParent());
+			Files.write(resultFile, Collections.singletonList(expectedString), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
 
-        int exit = process.waitFor();
-        if (exit != 0) {
-            throw new IllegalStateException("rsync failed with exit code " + exit);
-        }
+			// Run parity test with expected string
+			runParityTest(
+				"comparing linux against rsync - " + name,
+				() -> (RegexBackedPattern) RSyncPattern.compile(pattern),
+				() -> expectedString,
+				() -> javaDir,
+				cleanup
+			);
 
-        Files.deleteIfExists(tempExclude);
-    }
+		} else if (OS == WINDOWS) {
+			Path javaDir = Files.createTempDirectory("javaCopy");
+			runParityTest(
+				"comparing windows against linux - " + name,
+				() -> (RegexBackedPattern) RSyncPattern.compile(pattern),
+				() -> {
+					Path resultFile = LINUX_TO_WINDOWS_RESULTS_MOUNT.resolve(name + ".txt");
+					String expectedString;
+					try (BufferedReader reader = Files.newBufferedReader(resultFile)) {
+						expectedString = reader.readLine();
+					}
+					return expectedString;
+				},
+				() -> javaDir,
+				cleanup
+			);
+		} 
+		else if (OS == MAC) {
+			Path javaDir = Files.createTempDirectory("javaCopy");
+			runParityTest(
+				"comparing mac against linux - " + name,
+				() -> (RegexBackedPattern) RSyncPattern.compile(pattern),
+				() -> {
+					Path resultFile = LINUX_TO_MAC_RESULTS_MOUNT.resolve(name + ".txt");
+					String expectedString;
+					try (BufferedReader reader = Files.newBufferedReader(resultFile)) {
+						expectedString = reader.readLine();
+					}
+					return expectedString;
+				},
+				() -> javaDir,
+				cleanup
+			);
+		}
+		else {
+			assumeTrue(false, "Skipping Rsync parity test: unsupported OS");
+		}
+	}
+	
+	private void runParityTest(String testName, Callable<RegexBackedPattern> patternProvider, Callable<String> expectedProvider, Callable<Path> resultsProvider, BiConsumer<Path, Path> finalizer) throws Exception {
+		Path results = null;
+		RegexBackedPattern pattern = null;
+		String expectedString = null;
+		String identifier = testName != null && !testName.trim().isEmpty() ? "(" + testName + ")" : "";
+		try {
+			expectedString = expectedProvider.call();
+			results = resultsProvider.call();
+			pattern = patternProvider.call();
 
-    private RSyncPattern copyWithJava(String pattern, Path dest) throws IOException {
-        RegexBackedPattern javaPattern = (RegexBackedPattern) RSyncPattern.compile(pattern);
+			System.out.println("results: " + results);
 
-        Files.walk(TEST_ROOT)
-                .forEach(sourcePath -> {
-                    Path relative = TEST_ROOT.relativize(sourcePath);
-                    Path targetPath = dest.resolve(relative);
+			// Copy with Java
+			copyWithJava(pattern, results);
 
-                    try {
-                        if (Files.isDirectory(sourcePath)) {
-                            Files.createDirectories(targetPath);
-                        } else if (!javaPattern.matches(TEST_ROOT, sourcePath)) { // Exclude pattern
-                            Files.createDirectories(targetPath.getParent());
-                            Files.copy(sourcePath, targetPath, StandardCopyOption.REPLACE_EXISTING);
-                        }
-                    } catch (IOException e) {
-                        throw new RuntimeException("Failed copying file: " + sourcePath, e);
-                    }
-                });
-      return javaPattern;
-    }
+			// Build list from actual results
+			List<String> resultingFiles = listAllRelativeFiles(results);
+			Collections.sort(resultingFiles);
 
-    private List<String> listAllRelativeFiles(Path root) throws IOException {
-        return Files.walk(root)
-                .filter(Files::isRegularFile)
-                .map(path -> root.relativize(path).toString())
-                .collect(Collectors.toList());
-    }
+			String resultingFilesString = resultingFiles.toString();
+			if(OS.getOS() == WINDOWS) {
+				resultingFilesString = resultingFilesString.replace('\\', '/');
+			}
+			
+			Assertions.assertEquals(expectedString, resultingFilesString,
+					"Directory mismatch " + identifier + " for pattern: " + pattern + " regex: " + pattern.regexPattern + " ");
+			
+			if (OS == LINUX) {
+				if(!identifier.contains("no_matches")) {
+					Assertions.assertNotEquals(NO_MATCHES_OUTPUT, resultingFiles.toString(), "Pattern did not match any files! Test is ineffective: " + identifier + " for pattern " + pattern.pattern + " regex: " + pattern.regexPattern + " ");
+				}
+			}
+		} finally {
+			finalizer.accept(null, results);
+		}
+	}
 
-    private void deleteRecursively(Path root) throws IOException {
-        if (!Files.exists(root)) return;
 
-        Files.walk(root)
-                .sorted(Comparator.reverseOrder())
-                .forEach(path -> {
-                    try {
-                        Files.deleteIfExists(path);
-                    } catch (IOException ignored) {
-                    }
-                });
-    }
+	private void runRsyncCopy(String excludePattern, Path dest) throws IOException, InterruptedException {
+		Path tempExclude = Files.createTempFile("exclude", ".txt");
+		Files.write(tempExclude, Collections.singleton(excludePattern), StandardOpenOption.TRUNCATE_EXISTING);
+
+		ProcessBuilder pb = new ProcessBuilder(
+				"rsync",
+				"-av",
+				"--exclude-from=" + tempExclude.toAbsolutePath(),
+				TEST_ROOT.toAbsolutePath() + "/",
+				dest.toAbsolutePath().toString() + "/"
+		);
+		
+		System.out.println("Copying from: " + TEST_ROOT.toAbsolutePath() + " to " + dest.toAbsolutePath().toString());
+		pb.redirectErrorStream(true);
+		Process process = pb.start();
+
+		try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+			reader.lines().forEach(System.out::println); // optional: debug output
+		}
+
+		int exit = process.waitFor();
+		if (exit != 0) {
+			throw new IllegalStateException("rsync failed with exit code " + exit);
+		}
+
+		Files.deleteIfExists(tempExclude);
+	}
+
+	private void copyWithJava(RegexBackedPattern pattern, Path dest) throws IOException {
+		System.out.println("Java dest: " + dest);
+		
+		Files.walk(TEST_ROOT)
+				.forEach(sourcePath -> {
+					Path relative = TEST_ROOT.relativize(sourcePath);
+					Path targetPath = dest.resolve(relative);
+
+					try {
+						if (Files.isDirectory(sourcePath)) {
+							Files.createDirectories(targetPath);
+						} else if (!pattern.matches(TEST_ROOT, sourcePath)) { // Exclude pattern
+							System.out.println("Does not match: " + sourcePath);
+							Files.createDirectories(targetPath.getParent());
+							Files.copy(sourcePath, targetPath, StandardCopyOption.REPLACE_EXISTING);
+						}
+					} catch (IOException e) {
+						throw new RuntimeException("Failed copying file: " + sourcePath, e);
+					}
+				});
+	}
+
+	private List<String> listAllRelativeFiles(Path root) throws IOException {
+		return Files.walk(root)
+				.filter(Files::isRegularFile)
+				.map(path -> root.relativize(path).toString())
+				.collect(Collectors.toList());
+	}
+
+	private static void deleteRecursively(Path root) {
+		try {
+			if (root == null || !Files.exists(root)) return;
+	
+			Files.walk(root)
+					.sorted(Comparator.reverseOrder())
+					.forEach(path -> {
+						try {
+							Files.deleteIfExists(path);
+						} catch (IOException ignored) {
+						}
+					});
+		}
+		catch(IOException e) {
+			throw new UncheckedIOException(e);
+		}
+	}
+	
+	private void prepareStaticDirs(Path... dirs) throws IOException {
+		for (Path dir : dirs) {
+			//deleteRecursively(dir);
+			Files.createDirectories(dir);
+		}
+	}
 }

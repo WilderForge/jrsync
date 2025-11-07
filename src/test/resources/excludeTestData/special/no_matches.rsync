@@ -1,0 +1,4 @@
+# Used to make sure there are no tests that do nothing
+# Matches no files or directories
+
+__JRSYNC_NO_SUCH_FILE__

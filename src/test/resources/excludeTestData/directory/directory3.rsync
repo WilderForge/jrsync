@@ -1,4 +1,4 @@
 # directory 3
 # build directory exclusion
 
-build/
+builder/
