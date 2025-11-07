@@ -28,6 +28,7 @@ public class RsyncPatternParityTest {
 	
 	private static final Path LINUX_RESULTS_DIR = LINUX_RSYNC_DIR.getParent().resolve("linux-results");
 	private static final Path LINUX_TO_WINDOWS_RESULTS_MOUNT = Paths.get("C:\\jrsync\\linux-results");
+	private static final Path LINUX_TO_MAC_RESULTS_MOUNT = Paths.get("/tmp/jrsync/linux-results");
 	
 	private static final boolean IS_GITHUB_ACTIONS = "true".equalsIgnoreCase(System.getenv("GITHUB_ACTIONS"));
 	private static final OS OS = com.wildermods.jrsync.OS.getOS();
@@ -143,7 +144,25 @@ public class RsyncPatternParityTest {
 				() -> javaDir,
 				cleanup
 			);
-		} else {
+		} 
+		else if (OS == MAC) {
+			Path javaDir = Files.createTempDirectory("javaCopy");
+			runParityTest(
+				"comparing mac against linux - " + name,
+				() -> (RegexBackedPattern) RSyncPattern.compile(pattern),
+				() -> {
+					Path resultFile = LINUX_TO_MAC_RESULTS_MOUNT.resolve(name + ".txt");
+					String expectedString;
+					try (BufferedReader reader = Files.newBufferedReader(resultFile)) {
+						expectedString = reader.readLine();
+					}
+					return expectedString;
+				},
+				() -> javaDir,
+				cleanup
+			);
+		}
+		else {
 			assumeTrue(false, "Skipping Rsync parity test: unsupported OS");
 		}
 	}
