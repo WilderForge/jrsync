@@ -78,6 +78,7 @@ jobs:
         if: always()
         with:
           report_paths: '**/build/test-results/test/TEST-*.xml'
+          check_name: "JUnit Test Report (Linux)"
       - name: Post Build Status
         if: always()
         run: |
@@ -127,6 +128,7 @@ jobs:
         if: always()
         with:
           report_paths: '**/build/test-results/test/TEST-*.xml'
+          check_name: "JUnit Test Report (Windows)"
   build-macos:
     name: Build and test (macOS)
     runs-on: macos-latest
@@ -158,4 +160,4 @@ jobs:
         if: always()
         with:
           report_paths: '**/build/test-results/test/TEST-*.xml'
-
+          check_name: "JUnit Test Report (Mac)"
